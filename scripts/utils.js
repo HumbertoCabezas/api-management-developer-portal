@@ -4,6 +4,7 @@ const https = require("https");
 const { BlobServiceClient } = require("@azure/storage-blob");
 const blobStorageContainer = "content";
 
+process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
 function listFilesInDirectory(dir) {
     const results = [];
@@ -45,24 +46,31 @@ async function getStorageSasTokenOrThrow(managementApiEndpoint, managementApiAcc
  * @param {string} token the SAS token
  */
 async function getStorageSasToken(endpoint, token) {
-    const options = {
-        port: 443,
-        method: 'POST',
-        headers: {
-            'Authorization': token
-        }
-    };
-
-    const raw = await request(`https://${endpoint}/portalSettings/mediaContent/listSecrets?api-version=2018-01-01`, options);
-    const body = JSON.parse(raw);
-    return body.containerSasUrl;
+    const response = await request("POST", `https://${endpoint}/portalSettings/mediaContent/listSecrets?api-version=2018-01-01`, token);
+    return response.containerSasUrl;
 }
 
 /**
  * A wrapper for making a request and returning its response body.
  * @param {Object} options https options
  */
-async function request(url, options) {
+async function request(method, url, accessToken, body) {
+    const headers = {
+        "If-Match": "*",
+        "Content-Type": "application/json",
+        "Authorization": accessToken
+    };
+
+    if (body) {
+        headers["Content-Length"] = Buffer.byteLength(body);
+    }
+
+    const options = {
+        port: 443,
+        method: method,
+        headers: headers
+    };
+
     return new Promise((resolve, reject) => {
         const req = https.request(url, options, (resp) => {
             let data = '';
@@ -73,7 +81,10 @@ async function request(url, options) {
 
             resp.on('end', () => {
                 try {
-                    resolve(data);
+                    console.log(url);
+                    console.log(data);
+                    console.log(accessToken);
+                    resolve(JSON.parse(data));
                 }
                 catch (e) {
                     reject(e);
@@ -84,6 +95,10 @@ async function request(url, options) {
         req.on('error', (e) => {
             reject(e);
         });
+
+        if (body) {
+            req.write(body);
+        }
 
         req.end();
     });
@@ -98,13 +113,12 @@ async function downloadBlobs(blobStorageUrl, localMediaFolder) {
     let blobs = containerClient.listBlobsFlat();
 
     for await (const blob of blobs) {
-        console.log(blob.name);
         const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
         await blockBlobClient.downloadToFile(`${localMediaFolder}/${blob.name}`);
     }
 }
 
-async function uploadBlobs(blobStorageUrl, blobStorageContainer, localMediaFolder) {
+async function uploadBlobs(blobStorageUrl, localMediaFolder) {
     const blobServiceClient = new BlobServiceClient(blobStorageUrl.replace(`/${blobStorageContainer}`, ""));
     const containerClient = blobServiceClient.getContainerClient(blobStorageContainer);
     const fileNames = listFilesInDirectory(localMediaFolder);

@@ -1,59 +1,20 @@
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
-const { downloadBlobs, getStorageSasTokenOrThrow } = require("./utils");
+const { request, downloadBlobs, getStorageSasTokenOrThrow } = require("./utils");
 const managementApiEndpoint = process.argv[2];
 const managementApiAccessToken = process.argv[3];
 const destinationFolder = process.argv[4];
-const localMediaFolder = `./${destinationFolder}/content`;
 
-process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
-
-var options = {
-    port: 443,
-    method: "GET",
-    headers: {
-        "Authorization": managementApiAccessToken
-    }
-};
-
-async function request(url) {
-    return new Promise((resolve, reject) => {
-        const req = https.request(url, options, (resp) => {
-            let data = "";
-
-            resp.on("data", (chunk) => {
-                data += chunk;
-            });
-
-            resp.on("end", () => {
-                try {
-                    resolve(JSON.parse(data));
-                }
-                catch (e) {
-                    reject(e);
-                    console.log(url);
-                }
-            });
-        });
-
-        req.on("error", (e) => {
-            reject(e);
-        });
-
-        req.end();
-    });
-}
 
 async function getContentTypes() {
-    const data = await request(`https://${managementApiEndpoint}/contentTypes?api-version=2018-06-01-preview`);
+    const data = await request("GET", `https://${managementApiEndpoint}/contentTypes?api-version=2018-06-01-preview`, managementApiAccessToken);
     const contentTypes = data.value.map(x => x.id.replace("\/contentTypes\/", ""));
 
     return contentTypes;
 }
 
 async function getContentItems(contentType) {
-    const data = await request(`https://${managementApiEndpoint}/contentTypes/${contentType}/contentItems?api-version=2018-06-01-preview`);
+    const data = await request("GET", `https://${managementApiEndpoint}/contentTypes/${contentType}/contentItems?api-version=2018-06-01-preview`, managementApiAccessToken);
     const contentItems = data.value;
 
     return contentItems;
@@ -68,7 +29,6 @@ async function captureJson() {
 
         contentItems.forEach(contentItem => {
             result[contentItem.id] = contentItem;
-
             delete contentItem.id;
         });
     }
@@ -80,6 +40,7 @@ async function captureJson() {
 
 async function capture() {
     const blobStorageUrl = await getStorageSasTokenOrThrow(managementApiEndpoint, managementApiAccessToken);
+    const localMediaFolder = `./${destinationFolder}/content`;
 
     await captureJson();
     await downloadBlobs(blobStorageUrl, localMediaFolder);
