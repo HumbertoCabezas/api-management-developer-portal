@@ -17,11 +17,11 @@
  * and the script will generate tokens that expire in 1 hour. (via sourceId, sourceKey, destId, destKey)
  */
 
-const https = require('https');
 const moment = require('moment');
 const crypto = require('crypto');
 const mkdirSync = require('fs').mkdirSync;
 const execSync = require('child_process').execSync;
+const { request, getStorageSasTokenOrThrow } = require('./utils.js');
 
 const yargs = require('yargs')
     .example('$0 \
@@ -120,11 +120,11 @@ const yargs = require('yargs')
 async function run() {
     const sourceEndpoint = yargs.sourceEndpoint;
     const sourceToken = await getTokenOrThrow(yargs.sourceToken, yargs.sourceId, yargs.sourceKey);
-    const sourceStorage = await getStorageConnectionOrThrow(yargs.sourceStorage, sourceEndpoint, sourceToken);
+    const sourceStorage = await getStorageSasTokenOrThrow(yargs.sourceStorage, sourceEndpoint, sourceToken);
 
     const destEndpoint = yargs.destEndpoint;
     const destToken = await getTokenOrThrow(yargs.destToken, yargs.destId, yargs.destKey);
-    const destStorage = await getStorageConnectionOrThrow(yargs.destStorage, destEndpoint, destToken);
+    const destStorage = await getStorageSasTokenOrThrow(yargs.destStorage, destEndpoint, destToken);
     const publishEndpoint = yargs.publishEndpoint;
     
     // the rest of this mirrors migrate.bat, but since we're JS, we're platform-agnostic.
@@ -156,36 +156,6 @@ async function run() {
     }
 }
 
-/**
- * A wrapper for making a request and returning its response body.
- * @param {Object} options https options
- */
-async function request(url, options) {
-    return new Promise((resolve, reject) => {
-        const req = https.request(url, options, (resp) => {
-            let data = '';
-
-            resp.on('data', (chunk) => {
-                data += chunk;
-            });
-
-            resp.on('end', () => {
-                try {
-                    resolve(data);
-                }
-                catch (e) {
-                    reject(e);
-                }
-            });
-        });
-
-        req.on('error', (e) => {
-            reject(e);
-        });
-
-        req.end();
-    });
-}
 
 /**
  * Attempts to get a SAS token in two ways:
@@ -224,45 +194,7 @@ async function generateSASToken(id, key, expiresIn = 3600) {
     return `SharedAccessSignature uid=${id}&ex=${expiryString}&sn=${signedData}`;
 }
 
-/**
- * Attempts to get a develoer portal storage connection string in two ways:
- * 1) if the connection string is explicitly set by the user, use it.
- * 2) retrieving the connection string from the management API using the instance endpoint and SAS token
- * @param {string} storage an optionally specified storage connection string
- * @param {string} endpoint the management endpoint of service instance
- * @param {string} token the SAS token
- */
-async function getStorageConnectionOrThrow(storage, endpoint, token) {
-    if (storage) {
-        return storage;
-    }
-    if (token) {
-        // token should always be available, because we call
-        // getTokenOrThrow before this
-        return await getStorageConnection(endpoint, token);
-    }
-    throw Error('Storage connection could not be retrieved');
-}
 
-/**
- * Gets a storage connection string from the management API for the specified APIM instance and
- * SAS token.
- * @param {string} endpoint the management endpoint of service instance
- * @param {string} token the SAS token
- */
-async function getStorageConnection(endpoint, token) {
-    const options = {
-        port: 443,
-        method: 'GET',
-        headers: {
-            'Authorization': token
-        }
-    };
-
-    const raw = await request(`https://${endpoint}/tenant/settings?api-version=2018-01-01`, options);
-    const body = JSON.parse(raw);
-    return body.settings.PortalStorageConnectionString;
-}
 
 /**
  * Publishes the content of the specified APIM instance using a SAS token.
