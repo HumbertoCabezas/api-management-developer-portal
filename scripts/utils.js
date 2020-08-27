@@ -81,11 +81,11 @@ async function request(method, url, accessToken, body) {
 
             resp.on('end', () => {
                 try {
-                    if (data){
+                    if (data && data.startsWith("{")) {
                         resolve(JSON.parse(data));
                     }
                     else {
-                        resolve();
+                        resolve(data);
                     }
                 }
                 catch (e) {
