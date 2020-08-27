@@ -81,10 +81,12 @@ async function request(method, url, accessToken, body) {
 
             resp.on('end', () => {
                 try {
-                    console.log(url);
-                    console.log(data);
-                    console.log(accessToken);
-                    resolve(JSON.parse(data));
+                    if (data){
+                        resolve(JSON.parse(data));
+                    }
+                    else {
+                        resolve();
+                    }
                 }
                 catch (e) {
                     reject(e);
@@ -130,4 +132,22 @@ async function uploadBlobs(blobStorageUrl, localMediaFolder) {
     }
 }
 
-module.exports = { getStorageSasTokenOrThrow, request, downloadBlobs, uploadBlobs };
+async function deleteBlobs(blobStorageUrl) {
+    const blobServiceClient = new BlobServiceClient(blobStorageUrl.replace(`/${blobStorageContainer}`, ""));
+    const containerClient = blobServiceClient.getContainerClient(blobStorageContainer);
+
+    let blobs = containerClient.listBlobsFlat();
+
+    for await (const blob of blobs) {
+        const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
+        await blockBlobClient.deleteIfExists();
+    }
+}
+
+module.exports = {
+    request,
+    downloadBlobs,
+    uploadBlobs,
+    deleteBlobs,
+    getStorageSasTokenOrThrow
+};

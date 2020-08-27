@@ -1,6 +1,5 @@
 const fs = require("fs");
 const { request, uploadBlobs, getStorageSasTokenOrThrow } = require("./utils");
-
 const managementApiEndpoint = process.argv[2]
 const managementApiAccessToken = process.argv[3]
 const sourceFolder = process.argv[4];
